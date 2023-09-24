@@ -1,0 +1,119 @@
+---
+title: "Final Project"
+author: "Bruce Yun"
+date: "2023-04-26"
+output: html_document
+---
+
+# Housing and Urban Development Analysis
+
+#### Bruce Yun, Martin Uchoa
+
+```{r, message = FALSE, warning = FALSE}
+library(foreign)
+library(readr)
+library(dplyr)
+```
+
+### Data Cleaning
+
+1.  Load the data
+
+```{r}
+prop50 <- read.csv("~/Library/CloudStorage/OneDrive-TheUniversityofTexasatAustin/2023 Spring/ECO 350K (AI and Public Policy)/Final Project/prop50_train_anonym.csv")
+
+# head(prop50, 10)
+
+# head(names(prop50), 10)
+```
+
+2.  Create indicator variables
+    -   Variables to use: `pool`, `gated_community`, `garage`, `number_rooms`, `rent_amount`, `number_baths`
+
+```{r}
+prop50_data <- subset(select(prop50, pool, gated_community, garage, number_rooms, rent_amount, number_baths))
+```
+
+```{r}
+prop50_data$pool <- ifelse(prop50_data$pool == "Y", 1, 0)
+
+prop50_data$garage <- ifelse(prop50_data$garage == "Y", 1, 0)
+
+prop50_data$gated_community <- 
+  ifelse(prop50_data$gated_community == "Y", 1, ifelse
+         (prop50_data$gated_community == "N", 0, NA))
+
+# summary(prop50_data$rent_amount)
+
+prop50_data2 <- na.omit(prop50_data)
+```
+
+### Data Analysis
+
+1.  Lasso Regression Model
+
+```{r, message = FALSE, warning = FALSE}
+library(glmnet)
+```
+
+-   Define response variable and matrix of predictor variables
+
+```{r}
+# define response variable
+y <- prop50_data2$rent_amount
+
+# define matrix of predictor variables
+colnames <- c("pool", "gated_community", "garage", "number_rooms", "number_baths")
+x <- data.matrix(prop50_data2[, colnames])
+```
+
+-   Find lambda value
+
+```{r}
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(x, y, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda
+
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+```
+
+-   Analyze final model
+
+```{r}
+#find coefficients of best model
+best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+coef(best_model)
+```
+
+-   Use the fitted lasso regression model to predict the value for `rent_amount` of this new observation
+
+```{r}
+#define new observation
+new = matrix(c(-122.7109, 58.0413, 163.3681, 160.3578, 212.1314), nrow=1, ncol=5) 
+
+#use lasso regression model to predict response value
+predict(best_model, s = best_lambda, newx = new)
+```
+
+-   Calculate the R-squared of the model on the training data
+
+```{r}
+#use fitted best model to make predictions
+y_predicted <- predict(best_model, s = best_lambda, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+rsq
+```
+
+The R-squared turns out to be **0.249186**.
+
+That is, the best model was able to explain **24.92%** of the variation in the response values of the training data.
